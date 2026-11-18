@@ -1,0 +1,88 @@
+Bank CenterCredit JSC
+050000, Republic of Kazakhstan, Almaty, Test Avenue 1
+Email: info@bcc.kz
+Web: www.bcc.kz
+ 
+ 31.03.2026 10:00
+TEST USER
+IIN: 000000000000
+Account statement KZ00TEST0000000000
+Account currency KZT
+Account type #Card
+Payment card number 400000******0000
+Statement period 01.03.2026 - 31.03.2026
+Balance as of 01.03.2026 Incomings for the period Expenses for the period Balance as of 31.03.2026
+1 000.00 KZT 250 000.00
+KZT
+68 070.50 KZT 182 929.50 KZT
+Current balance: 182 929.50
+KZT
+Operation
+date
+Reflection date
+on an account Operation
+description
+Amount in
+operation
+currency
+Amount in
+KZT
+Fee,
+KZT
+Cashback Bank
+exchange rate
+Rate
+2026-03-30 2026-03-30 Transfer 2 000.00 KZT -2 000.00 
+KZT
+0.00 KZT 0.00KZT
+2026-03-28 2026-03-29 Purchase COFFEE 
+POINT
+10.00 USD -5 012.50 
+KZT
+0.00 KZT 0.00KZT 501.25
+2026-03-25 2026-03-25 Transfer to 3 500.00 KZT -3 500.00 0.00 KZT 0.00KZT
+Page 1 of 2
+
+Иван И. KZT
+2026-03-20 2026-03-20 BO. Годовое 
+обслуживание 
+счета. 
+5 000.00 KZT 0.00 KZT -5 000.00 
+KZT
+0.00KZT
+2026-03-15 2026-03-16 Purchase 
+SUPER 
+STORE
+50 008.00 
+KZT
+-50 008.
+00 KZT
+-150.00 KZT 2 000.32
+KZT
+2026-03-10 2026-03-10 Пополнение 200 000.00 
+KZT
+200 000.00 
+KZT
+0.00 KZT 0.00KZT
+2026-03-05 2026-03-05 Purchase 
+MAGNUM
+1 200.00 KZT -1 200.00 
+KZT
+0.00 KZT 0.00KZT
+2026-03-05 2026-03-05 Purchase 
+MAGNUM
+1 200.00 KZT -1 200.00 
+KZT
+0.00 KZT 0.00KZT
+2026-03-02 2026-03-02 Replenishment 50 000.00 
+KZT
+50 000.00 
+KZT
+0.00 KZT 0.00KZT
+Vice President of Retail Business Development
+Retail Business Division, Bank CenterCredit 
+JSC
+Test Signer
+The QR code (barcode) contains a web link to the electronic version of this document, which is 
+signed with the facsimile signature of an authorized person and sealed by Bank CenterCredit JSC.
+Page 2 of 2

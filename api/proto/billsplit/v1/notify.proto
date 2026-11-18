@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package billsplit.v1;
+
+option go_package = "github.com/Zifeldev/Billsplit/pkg/pb/billsplit/v1;billsplitv1";
+
+import "google/protobuf/timestamp.proto";
+
+// Served by the notifier service: push devices and in-app inbox.
+service NotificationService {
+  // Registers an Expo push token (ExponentPushToken[...]) for the caller.
+  rpc RegisterDevice(RegisterDeviceRequest) returns (RegisterDeviceResponse);
+  rpc UnregisterDevice(UnregisterDeviceRequest) returns (UnregisterDeviceResponse);
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc MarkNotificationsRead(MarkNotificationsReadRequest) returns (MarkNotificationsReadResponse);
+}
+
+message RegisterDeviceRequest {
+  string token = 1;
+  string platform = 2; // ios | android | web
+}
+message RegisterDeviceResponse {}
+
+message UnregisterDeviceRequest { string token = 1; }
+message UnregisterDeviceResponse {}
+
+message Notification {
+  string id = 1;
+  string type = 2;  // friend_request, friend_accepted, group_joined, receipt_parsed, receipt_finalized, expense_added, settlement, recurring_upcoming
+  string title = 3;
+  string body = 4;
+  map<string, string> data = 5; // e.g. {"receipt_id": "...", "group_id": "..."} for navigation
+  bool read = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListNotificationsRequest {
+  int32 limit = 1;
+  bool unread_only = 2;
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  int32 unread_count = 2;
+}
+
+message MarkNotificationsReadRequest {
+  repeated string ids = 1; // empty — mark all
+}
+message MarkNotificationsReadResponse {}

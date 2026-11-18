@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TODO_TEAM_ID.com.billsplit.app"],
+        "components": [{ "/": "/invite/*", "comment": "Billsplit invite links" }]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TODO_TEAM_ID.com.billsplit.app"]
+  }
+}

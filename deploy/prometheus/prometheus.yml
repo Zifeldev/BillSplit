@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: billsplit
+    static_configs:
+      - targets: ["gateway:9090"]
+        labels: { service: gateway }
+      - targets: ["auth:9090"]
+        labels: { service: auth }
+      - targets: ["social:9090"]
+        labels: { service: social }
+      - targets: ["split:9090"]
+        labels: { service: split }
+      - targets: ["finance:9090"]
+        labels: { service: finance }
+      - targets: ["notify:9090"]
+        labels: { service: notify }
+      - targets: ["ocr-worker:9090"]
+        labels: { service: ocr-worker }

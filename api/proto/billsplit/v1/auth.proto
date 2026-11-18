@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package billsplit.v1;
+
+option go_package = "github.com/Zifeldev/Billsplit/pkg/pb/billsplit/v1;billsplitv1";
+
+import "google/protobuf/timestamp.proto";
+
+// Served by the auth service.
+service AuthService {
+  rpc Register(RegisterRequest) returns (AuthResponse);
+  rpc Login(LoginRequest) returns (AuthResponse);
+  rpc Refresh(RefreshRequest) returns (AuthResponse);
+  rpc Me(MeRequest) returns (User);
+  rpc UpdateProfile(UpdateProfileRequest) returns (User);
+  // Revokes the refresh token (refresh tokens are single-use and rotate on Refresh).
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
+// Payment handles used to build "pay back" deep links (Venmo, PayPal.me, Zelle).
+message PaymentHandles {
+  string venmo = 1;  // Venmo username without @
+  string paypal = 2; // PayPal.me username
+  string zelle = 3;  // email or phone registered in Zelle
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  string currency = 4; // home currency, ISO 4217, e.g. "USD"
+  google.protobuf.Timestamp created_at = 5;
+  PaymentHandles payment = 6;
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string name = 3;
+  string currency = 4;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message MeRequest {}
+
+message UpdateProfileRequest {
+  string name = 1;     // empty — keep
+  string currency = 2; // empty — keep
+  // Set only the handles you want to change; "" clears a handle.
+  optional string venmo = 3;
+  optional string paypal = 4;
+  optional string zelle = 5;
+}
+
+message LogoutRequest { string refresh_token = 1; }
+message LogoutResponse {}
+
+message AuthResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  google.protobuf.Timestamp access_expires_at = 3;
+  User user = 4;
+}

@@ -1,0 +1,600 @@
+syntax = "proto3";
+
+package billsplit.v1;
+
+option go_package = "github.com/Zifeldev/Billsplit/pkg/pb/billsplit/v1;billsplitv1";
+
+import "google/protobuf/timestamp.proto";
+
+// Served by the finance service. Personal finance: transactions, bank
+// statement import, budgets, goals, dashboards. Amounts are kept in the
+// original currency and converted to the user's home currency for reports.
+service FinanceService {
+  // Public (no login needed).
+  rpc ListCurrencies(ListCurrenciesRequest) returns (ListCurrenciesResponse);
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
+  rpc CreateTransaction(CreateTransactionRequest) returns (Transaction);
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+  rpc UpdateTransactionCategory(UpdateTransactionCategoryRequest) returns (Transaction);
+  rpc UpdateTransaction(UpdateTransactionRequest) returns (Transaction);
+  rpc DeleteTransaction(DeleteTransactionRequest) returns (DeleteTransactionResponse);
+
+  // Bank statement (CSV/OFX) import — processed asynchronously by the worker.
+  rpc ImportStatement(ImportStatementRequest) returns (StatementImport);
+  rpc GetStatementImport(GetStatementImportRequest) returns (StatementImport);
+  rpc ListStatementImports(ListStatementImportsRequest) returns (ListStatementImportsResponse);
+
+  rpc SetBudget(SetBudgetRequest) returns (Budget);
+  rpc ListBudgets(ListBudgetsRequest) returns (ListBudgetsResponse);
+  rpc DeleteBudget(DeleteBudgetRequest) returns (DeleteBudgetResponse);
+  rpc SetSavingsGoal(SetSavingsGoalRequest) returns (SavingsGoal);
+  rpc ListSavingsGoals(ListSavingsGoalsRequest) returns (ListSavingsGoalsResponse);
+  rpc DeleteSavingsGoal(DeleteSavingsGoalRequest) returns (DeleteSavingsGoalResponse);
+
+  // Subscriptions and other repeating charges detected in transactions.
+  rpc ListRecurring(ListRecurringRequest) returns (ListRecurringResponse);
+
+  rpc GetDashboard(GetDashboardRequest) returns (Dashboard);
+
+  // Investments: deposits (valued by formula) and market holdings (valued by
+  // live quotes). ListInvestments returns the whole portfolio with history.
+  rpc ListInvestments(ListInvestmentsRequest) returns (Portfolio);
+  rpc SetInvestment(SetInvestmentRequest) returns (Investment);
+  rpc DeleteInvestment(DeleteInvestmentRequest) returns (DeleteInvestmentResponse);
+
+  // Market data (Yahoo Finance, cached): price history, ticker search and a
+  // watchlist of major indices / crypto / FX / gold plus the user's tickers.
+  rpc GetMarketChart(GetMarketChartRequest) returns (MarketChart);
+  rpc SearchSymbols(SearchSymbolsRequest) returns (SearchSymbolsResponse);
+  rpc GetMarketOverview(GetMarketOverviewRequest) returns (MarketOverview);
+
+  // Net worth: manual account balances (cash, cards, savings, credit, loans,
+  // property) + investments + bill-split balances. A daily snapshot builds
+  // the history chart.
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc SetAccount(SetAccountRequest) returns (Account);
+  rpc DeleteAccount(DeleteAccountRequest) returns (DeleteAccountResponse);
+  rpc GetNetWorth(GetNetWorthRequest) returns (NetWorth);
+
+  // Where the current month ends up: actual flows so far + expected income and
+  // spending for the remaining days (from the last months' pattern).
+  rpc GetMonthForecast(GetMonthForecastRequest) returns (MonthForecast);
+
+  // Downloadable reports: month (transactions + summary) or portfolio, CSV or PDF.
+  rpc ExportReport(ExportReportRequest) returns (ExportFile);
+}
+
+// Bucket for the 50/30/20 rule.
+enum CategoryKind {
+  CATEGORY_KIND_UNSPECIFIED = 0;
+  CATEGORY_KIND_NEEDS = 1;
+  CATEGORY_KIND_WANTS = 2;
+  CATEGORY_KIND_SAVINGS = 3;
+  CATEGORY_KIND_INCOME = 4;
+}
+
+message Category {
+  string id = 1;
+  string name = 2;
+  CategoryKind kind = 3;
+  string icon = 4;
+}
+
+message ListCurrenciesRequest {}
+
+message Currency {
+  string code = 1;
+  string name = 2;
+  // Digits after the decimal point (ISO 4217): 2 for USD, 0 for JPY/KRW.
+  // All *_cents fields are in minor units of their currency: 100 = $1.00, 100 = ¥100.
+  int32 minor_units = 3;
+}
+
+message ListCurrenciesResponse {
+  repeated Currency currencies = 1;
+}
+
+message ListCategoriesRequest {}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+}
+
+message Transaction {
+  string id = 1;
+  int64 amount_cents = 2; // negative — expense, positive — income
+  string currency = 3;
+  string description = 4;
+  string merchant = 5;
+  string category_id = 6;
+  string source = 7; // manual | statement | receipt
+  google.protobuf.Timestamp occurred_at = 8;
+}
+
+message CreateTransactionRequest {
+  int64 amount_cents = 1;
+  string description = 2;
+  string merchant = 3;
+  string category_id = 4; // empty — auto categorize
+  google.protobuf.Timestamp occurred_at = 5;
+  string currency = 6;    // empty — home currency
+}
+
+message ListTransactionsRequest {
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp to = 2;
+  string category_id = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListTransactionsResponse {
+  repeated Transaction transactions = 1;
+}
+
+message UpdateTransactionCategoryRequest {
+  string transaction_id = 1;
+  string category_id = 2;
+  // Remember merchant -> category for future imports.
+  bool remember_rule = 3;
+}
+
+// Only set fields are changed.
+message UpdateTransactionRequest {
+  string transaction_id = 1;
+  optional int64 amount_cents = 2;
+  optional string currency = 3;
+  optional string description = 4;
+  optional string merchant = 5;
+  optional string category_id = 6;
+  google.protobuf.Timestamp occurred_at = 7; // nil — keep
+}
+
+message DeleteTransactionRequest {
+  string transaction_id = 1;
+}
+
+message DeleteTransactionResponse {}
+
+enum StatementFormat {
+  STATEMENT_FORMAT_UNSPECIFIED = 0; // auto-detect
+  STATEMENT_FORMAT_CSV = 1;
+  STATEMENT_FORMAT_OFX = 2;
+  STATEMENT_FORMAT_PDF = 3; // bank PDF statement (Freedom Bank Kazakhstan supported)
+}
+
+message ImportStatementRequest {
+  bytes file = 1;
+  StatementFormat format = 2;
+  string bank = 3; // optional hint: chase, bofa, wellsfargo...
+  string currency = 4; // default currency for rows without one; empty — home currency.
+                       // Multi-currency statements (e.g. Freedom Bank) carry a currency per row.
+}
+
+enum ImportStatus {
+  IMPORT_STATUS_UNSPECIFIED = 0;
+  IMPORT_STATUS_PENDING = 1;
+  IMPORT_STATUS_DONE = 2;
+  IMPORT_STATUS_FAILED = 3;
+}
+
+message StatementImport {
+  string id = 1;
+  ImportStatus status = 2;
+  int32 imported = 3;
+  int32 duplicates = 4;
+  string error = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message GetStatementImportRequest {
+  string import_id = 1;
+}
+
+message ListStatementImportsRequest { int32 limit = 1; }
+message ListStatementImportsResponse { repeated StatementImport imports = 1; }
+
+message Budget {
+  string id = 1;
+  string category_id = 2;
+  int64 limit_cents = 3; // monthly
+}
+
+message SetBudgetRequest {
+  string category_id = 1;
+  int64 limit_cents = 2; // monthly, home currency; 0 removes the budget
+}
+
+message DeleteBudgetRequest { string category_id = 1; }
+message DeleteBudgetResponse {}
+
+message ListBudgetsRequest {}
+
+message ListBudgetsResponse {
+  repeated Budget budgets = 1;
+}
+
+message SavingsGoal {
+  string id = 1;
+  string name = 2;
+  int64 target_cents = 3;
+  int64 saved_cents = 4;   // linked goals: current value of the investment (home currency)
+  google.protobuf.Timestamp deadline = 5;
+  int64 monthly_needed_cents = 6;
+  // Linked to an investment (e.g. a deposit): progress follows its value.
+  string investment_id = 7;
+  string investment_name = 8;
+  // Linked deposits: when interest + top-ups reach the target (unset — not within 50 years).
+  google.protobuf.Timestamp projected_at = 9;
+}
+
+message SetSavingsGoalRequest {
+  string id = 1; // empty — create
+  string name = 2;
+  int64 target_cents = 3;
+  int64 saved_cents = 4;   // ignored for linked goals
+  google.protobuf.Timestamp deadline = 5;
+  string investment_id = 6; // empty — manual progress
+}
+
+message DeleteSavingsGoalRequest { string id = 1; }
+message DeleteSavingsGoalResponse {}
+
+message ListSavingsGoalsRequest {}
+
+message ListSavingsGoalsResponse {
+  repeated SavingsGoal goals = 1;
+}
+
+message GetDashboardRequest {
+  int32 year = 1;
+  int32 month = 2; // 1..12
+}
+
+message CategorySpend {
+  string category_id = 1;
+  string name = 2;
+  CategoryKind kind = 3;
+  int64 spent_cents = 4;
+  int64 budget_cents = 5;   // 0 — no budget
+  double budget_used = 6;   // 0..1+
+}
+
+message DailySpend {
+  string date = 1; // YYYY-MM-DD
+  int64 spent_cents = 2;
+}
+
+message MerchantSpend {
+  string merchant = 1;
+  int64 spent_cents = 2;
+  int32 count = 3;
+}
+
+message RuleBreakdown {
+  // Actual share of income for the 50/30/20 rule.
+  double needs = 1;
+  double wants = 2;
+  double savings = 3;
+}
+
+message MonthTotal {
+  string month = 1; // YYYY-MM
+  int64 income_cents = 2;
+  int64 expense_cents = 3;
+}
+
+// All dashboard amounts are in the user's home currency, converted with
+// ECB rates at the end of the requested month.
+message Dashboard {
+  string currency = 1;
+  int64 income_cents = 2;
+  int64 expense_cents = 3;
+  int64 net_cents = 4;
+  double savings_rate = 5;
+  repeated CategorySpend by_category = 6;
+  repeated DailySpend daily = 7;
+  repeated MerchantSpend top_merchants = 8;
+  RuleBreakdown rule_breakdown = 9;      // actual 50/30/20 split
+  repeated MonthTotal last_six_months = 10;
+  int64 projected_month_expense_cents = 11;
+  repeated string insights = 12;  // human-readable tips
+  int64 owed_to_me_cents = 13;    // from bill splitting
+  int64 i_owe_cents = 14;
+}
+
+enum RecurringPeriod {
+  RECURRING_PERIOD_UNSPECIFIED = 0;
+  RECURRING_PERIOD_WEEKLY = 1;
+  RECURRING_PERIOD_MONTHLY = 2;
+  RECURRING_PERIOD_YEARLY = 3;
+}
+
+message RecurringExpense {
+  string merchant = 1;
+  string category_id = 2;
+  int64 average_cents = 3;     // home currency, positive
+  string currency = 4;         // home currency
+  RecurringPeriod period = 5;
+  int32 occurrences = 6;
+  google.protobuf.Timestamp last_charged_at = 7;
+  google.protobuf.Timestamp next_expected_at = 8;
+  int64 yearly_cost_cents = 9;
+  bool is_subscription = 10;   // category subscriptions or typical SaaS merchant
+}
+
+message ListRecurringRequest {}
+
+message ListRecurringResponse {
+  repeated RecurringExpense items = 1;
+  int64 monthly_total_cents = 2;
+  string currency = 3;
+}
+
+// ---------- investments ----------
+
+enum InvestmentKind {
+  INVESTMENT_KIND_UNSPECIFIED = 0;
+  INVESTMENT_KIND_DEPOSIT = 1; // bank deposit, valued by its rate
+  INVESTMENT_KIND_STOCK = 2;
+  INVESTMENT_KIND_ETF = 3;
+  INVESTMENT_KIND_CRYPTO = 4;
+  INVESTMENT_KIND_BOND = 5;    // with a symbol — market price, without — by coupon rate like a deposit
+  INVESTMENT_KIND_METAL = 6;
+  INVESTMENT_KIND_OTHER = 7;   // manual: value = invested + rate
+}
+
+// How often deposit interest is added to the principal.
+enum Capitalization {
+  CAPITALIZATION_UNSPECIFIED = 0; // = monthly
+  CAPITALIZATION_MONTHLY = 1;
+  CAPITALIZATION_QUARTERLY = 2;
+  CAPITALIZATION_YEARLY = 3;
+  CAPITALIZATION_NONE = 4;        // simple interest, paid at maturity
+}
+
+message Investment {
+  string id = 1;
+  InvestmentKind kind = 2;
+  string name = 3;
+  string symbol = 4;                  // market ticker (Yahoo), empty for deposits
+  string currency = 5;                // currency of the asset / deposit
+  double quantity = 6;                // units held (market assets)
+  int64 invested_cents = 7;           // money put in (asset currency); deposits: initial amount
+  double rate_percent = 8;            // annual nominal rate (deposits, manual assets)
+  Capitalization capitalization = 9;
+  int64 monthly_contribution_cents = 10; // deposit top-ups at the start of each month
+  google.protobuf.Timestamp opened_at = 11;
+  int32 term_months = 12;             // 0 — open-ended
+
+  // Computed.
+  int64 value_cents = 20;             // current value, asset currency
+  int64 value_home_cents = 21;        // current value, home currency
+  int64 contributed_cents = 22;       // invested + top-ups so far (asset currency)
+  int64 gain_cents = 23;              // value - contributed (asset currency)
+  double gain_percent = 24;           // gain / contributed
+  double price = 25;                  // last price per unit (market assets)
+  double day_change_percent = 26;
+  double effective_rate_percent = 27; // deposits: effective annual yield incl. capitalization
+  int64 maturity_value_cents = 28;    // deposits with a term: value at maturity
+  google.protobuf.Timestamp maturity_at = 29;
+  string quote_error = 30;            // non-empty when the quote is unavailable (value falls back to invested)
+}
+
+message SetInvestmentRequest {
+  string id = 1; // empty — create
+  InvestmentKind kind = 2;
+  string name = 3;
+  string symbol = 4;
+  string currency = 5;
+  double quantity = 6;
+  int64 invested_cents = 7;
+  double rate_percent = 8;
+  Capitalization capitalization = 9;
+  int64 monthly_contribution_cents = 10;
+  google.protobuf.Timestamp opened_at = 11;
+  int32 term_months = 12;
+}
+
+message DeleteInvestmentRequest { string id = 1; }
+message DeleteInvestmentResponse {}
+message ListInvestmentsRequest {}
+
+message AllocationSlice {
+  InvestmentKind kind = 1;
+  int64 value_cents = 2; // home currency
+  double share = 3;      // 0..1
+}
+
+message PortfolioPoint {
+  string date = 1;            // YYYY-MM-DD
+  int64 value_cents = 2;      // home currency
+  int64 contributed_cents = 3; // home currency
+}
+
+// All totals are in the user's home currency at today's rates.
+message Portfolio {
+  string currency = 1;
+  int64 value_cents = 2;
+  int64 contributed_cents = 3;
+  int64 gain_cents = 4;
+  double gain_percent = 5;
+  int64 yearly_interest_cents = 6; // expected interest of deposits over the next 12 months
+  repeated Investment items = 7;
+  repeated AllocationSlice allocation = 8;
+  repeated PortfolioPoint history = 9; // weekly, last 12 months
+}
+
+// ---------- market data ----------
+
+message PricePoint {
+  string date = 1; // YYYY-MM-DD
+  double close = 2;
+}
+
+message GetMarketChartRequest {
+  string symbol = 1;
+  string range = 2; // 1mo | 3mo | 6mo | 1y | 5y (default 1y)
+}
+
+message MarketChart {
+  string symbol = 1;
+  string name = 2;
+  string currency = 3;
+  double price = 4;
+  double day_change_percent = 5;
+  double range_change_percent = 6; // first close of the range -> last price
+  repeated PricePoint points = 7;
+  string range = 8;
+}
+
+message SearchSymbolsRequest { string query = 1; }
+
+message SymbolMatch {
+  string symbol = 1;
+  string name = 2;
+  string exchange = 3;
+  string type = 4; // EQUITY, ETF, CRYPTOCURRENCY, INDEX, CURRENCY, FUTURE, MUTUALFUND
+}
+
+message SearchSymbolsResponse { repeated SymbolMatch matches = 1; }
+
+message GetMarketOverviewRequest {}
+
+message MarketQuote {
+  string symbol = 1;
+  string name = 2;
+  string currency = 3;
+  double price = 4;
+  double day_change_percent = 5;
+  double month_change_percent = 6;
+  repeated double spark = 7; // ~1 month of daily closes
+  bool held = 8;             // in the user's portfolio
+}
+
+message MarketOverview { repeated MarketQuote quotes = 1; }
+
+// ---------- net worth ----------
+
+enum AccountKind {
+  ACCOUNT_KIND_UNSPECIFIED = 0;
+  ACCOUNT_KIND_CASH = 1;
+  ACCOUNT_KIND_CARD = 2;        // debit / current account
+  ACCOUNT_KIND_SAVINGS = 3;     // savings account without a fixed rate
+  ACCOUNT_KIND_CREDIT_CARD = 4; // liability: balance is the amount owed
+  ACCOUNT_KIND_LOAN = 5;        // liability: remaining principal
+  ACCOUNT_KIND_PROPERTY = 6;    // car, apartment: estimated value
+}
+
+message Account {
+  string id = 1;
+  string name = 2;
+  AccountKind kind = 3;
+  string currency = 4;
+  int64 balance_cents = 5;      // always >= 0; liabilities hold the amount owed
+  int64 balance_home_cents = 6;
+  bool liability = 7;
+  bool liquid = 8;              // cash, cards, savings: counted in the month-end forecast
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message ListAccountsRequest {}
+message ListAccountsResponse { repeated Account accounts = 1; }
+
+message SetAccountRequest {
+  string id = 1; // empty — create
+  string name = 2;
+  AccountKind kind = 3;
+  string currency = 4;
+  int64 balance_cents = 5;
+}
+
+message DeleteAccountRequest { string id = 1; }
+message DeleteAccountResponse {}
+
+message GetNetWorthRequest {}
+
+message NetWorthPoint {
+  string date = 1; // YYYY-MM-DD
+  int64 net_cents = 2;
+  int64 assets_cents = 3;
+  int64 liabilities_cents = 4;
+}
+
+message NetWorth {
+  string currency = 1;
+  int64 net_cents = 2;
+  int64 assets_cents = 3;
+  int64 liabilities_cents = 4;
+  // Components (home currency, all >= 0).
+  int64 cash_cents = 5;          // liquid accounts
+  int64 property_cents = 6;
+  int64 investments_cents = 7;
+  int64 owed_to_me_cents = 8;    // friends owe you (bill splitting)
+  int64 credit_cents = 9;        // credit cards + loans
+  int64 i_owe_cents = 10;        // you owe friends
+  repeated Account accounts = 11;
+  repeated NetWorthPoint history = 12; // daily snapshots, oldest first
+  int64 change_30d_cents = 13;   // vs the snapshot ~30 days ago (0 — no history yet)
+  bool has_change_30d = 14;
+}
+
+// ---------- month forecast ----------
+
+message GetMonthForecastRequest {}
+
+message ForecastDay {
+  string date = 1;          // YYYY-MM-DD
+  int64 net_cents = 2;      // cumulative net flow since the 1st (actual up to today, then expected)
+  bool actual = 3;
+}
+
+message UpcomingCharge {
+  string merchant = 1;
+  int64 amount_cents = 2;   // home currency, positive
+  string date = 3;          // YYYY-MM-DD
+}
+
+message MonthForecast {
+  string currency = 1;
+  string month = 2;                    // YYYY-MM
+  int32 days_left = 3;
+  int64 income_so_far_cents = 4;
+  int64 expense_so_far_cents = 5;
+  int64 expected_income_cents = 6;     // rest of the month
+  int64 expected_expense_cents = 7;    // rest of the month
+  int64 projected_net_cents = 8;       // income - expenses for the whole month
+  bool has_balance = 9;                // the user has liquid accounts
+  int64 balance_now_cents = 10;
+  int64 projected_balance_cents = 11;  // balance on the last day of the month
+  repeated ForecastDay days = 12;
+  repeated UpcomingCharge upcoming = 13;
+  int32 history_months = 14;           // months the pattern is based on (0 — current pace)
+}
+
+// ---------- export ----------
+
+enum ExportKind {
+  EXPORT_KIND_UNSPECIFIED = 0;
+  EXPORT_KIND_MONTH = 1;      // summary + transactions of one month
+  EXPORT_KIND_PORTFOLIO = 2;  // holdings and net worth
+}
+
+enum ExportFormat {
+  EXPORT_FORMAT_UNSPECIFIED = 0;
+  EXPORT_FORMAT_CSV = 1;
+  EXPORT_FORMAT_PDF = 2;
+}
+
+message ExportReportRequest {
+  ExportKind kind = 1;
+  ExportFormat format = 2;
+  int32 year = 3;   // month export; 0 — current month
+  int32 month = 4;
+}
+
+message ExportFile {
+  string filename = 1;
+  string content_type = 2;
+  bytes data = 3;
+}

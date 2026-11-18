@@ -1,0 +1,301 @@
+syntax = "proto3";
+
+package billsplit.v1;
+
+option go_package = "github.com/Zifeldev/Billsplit/pkg/pb/billsplit/v1;billsplitv1";
+
+import "google/protobuf/timestamp.proto";
+import "billsplit/v1/auth.proto";
+
+// Served by the split service: receipts, claims, debts, settlements.
+
+service ReceiptService {
+  // Uploads a receipt photo (or raw text). OCR runs asynchronously; poll
+  // GetReceipt until status is PARSED (or FAILED — then fix with UpdateItems).
+  rpc UploadReceipt(UploadReceiptRequest) returns (Receipt);
+  // Manual receipt: items are known, no OCR. Created in PARSED status (ready for claims).
+  rpc CreateReceipt(CreateReceiptRequest) returns (Receipt);
+  // Expense without a receipt (rent, utilities, taxi): split equally, by percent,
+  // by exact amounts or by shares. Finalized immediately (debts are created).
+  rpc CreateExpense(CreateExpenseRequest) returns (Split);
+  rpc GetReceipt(GetReceiptRequest) returns (Receipt);
+  rpc ListReceipts(ListReceiptsRequest) returns (ListReceiptsResponse);
+  rpc UpdateItems(UpdateItemsRequest) returns (Receipt);
+  rpc ClaimItems(ClaimItemsRequest) returns (Receipt);
+  rpc GetSplit(GetSplitRequest) returns (Split);
+  rpc FinalizeReceipt(FinalizeReceiptRequest) returns (Split);
+  rpc DeleteReceipt(DeleteReceiptRequest) returns (DeleteReceiptResponse);
+}
+
+service BalanceService {
+  // Net balances in the group currency + minimal set of transfers.
+  rpc GetBalances(GetBalancesRequest) returns (GetBalancesResponse);
+  rpc SettleUp(SettleUpRequest) returns (Settlement);
+  // Per-friend totals across all groups, converted to the caller's home currency.
+  rpc GetMyBalances(GetMyBalancesRequest) returns (GetMyBalancesResponse);
+  // One shared account with a person across every common group: net total
+  // (debts in one group offset credits in another) with a breakdown by group
+  // and by receipt/expense/settlement.
+  rpc GetFriendLedger(GetFriendLedgerRequest) returns (FriendLedger);
+  // Settles everything with a person at once: records a settlement in every
+  // common group so each pairwise balance becomes zero. The real money moved is
+  // the net amount (e.g. you owe $30 in one group, they owe $10 in another → you pay $20).
+  rpc SettleWithFriend(SettleWithFriendRequest) returns (SettleWithFriendResponse);
+}
+
+enum ReceiptStatus {
+  RECEIPT_STATUS_UNSPECIFIED = 0;
+  RECEIPT_STATUS_PENDING = 1;
+  RECEIPT_STATUS_PARSED = 2;
+  RECEIPT_STATUS_FAILED = 3;
+  RECEIPT_STATUS_FINALIZED = 4;
+}
+
+message ItemClaim {
+  string user_id = 1;
+  int32 shares = 2;
+}
+
+message ReceiptItem {
+  string id = 1;
+  string name = 2;      // readable name ("Great Value Half & Half"), falls back to raw_name
+  int32 quantity = 3;
+  int64 price_cents = 4; // line total in receipt currency
+  repeated ItemClaim claims = 5;
+  string raw_name = 6;  // as printed on the receipt ("GV HH 320Z"); empty for manual items
+  string code = 7;      // UPC/EAN printed on the receipt, if any
+}
+
+message Receipt {
+  string id = 1;
+  string group_id = 2;
+  string payer_id = 3;
+  string store = 4;
+  ReceiptStatus status = 5;
+  repeated ReceiptItem items = 6;
+  int64 subtotal_cents = 7;
+  int64 tax_cents = 8;
+  int64 tip_cents = 9;
+  int64 total_cents = 10;
+  string currency = 11;       // receipt currency (may differ from group currency)
+  string parse_error = 12;    // error or warning from OCR
+  string ocr_provider = 13;   // rapidocr | ocrspace | claude | text | manual
+  google.protobuf.Timestamp purchased_at = 14;
+  google.protobuf.Timestamp created_at = 15;
+  ReceiptKind kind = 16;
+  string payer_name = 17;
+}
+
+enum ReceiptKind {
+  RECEIPT_KIND_UNSPECIFIED = 0;
+  RECEIPT_KIND_RECEIPT = 1; // itemized receipt (photo or manual)
+  RECEIPT_KIND_EXPENSE = 2; // single-amount expense without items
+}
+
+message UploadReceiptRequest {
+  string group_id = 1;
+  oneof source {
+    bytes image = 2;     // jpeg/png/webp photo or a PDF receipt, up to 8 MB (base64 in JSON)
+    string raw_text = 3;
+  }
+  string currency = 4;   // empty — group currency
+  int64 tip_cents = 5;
+}
+
+message CreateReceiptRequest {
+  string group_id = 1;
+  string store = 2;
+  string currency = 3; // empty — group currency
+  repeated ItemInput items = 4;
+  int64 tax_cents = 5;
+  int64 tip_cents = 6;
+  google.protobuf.Timestamp purchased_at = 7;
+}
+
+enum SplitType {
+  SPLIT_TYPE_UNSPECIFIED = 0;
+  SPLIT_TYPE_EQUAL = 1;   // value ignored
+  SPLIT_TYPE_PERCENT = 2; // value = basis points (2500 = 25%), must sum to 10000
+  SPLIT_TYPE_EXACT = 3;   // value = minor units, must sum to amount
+  SPLIT_TYPE_SHARES = 4;  // value = weight (1, 2, ...)
+}
+
+message ExpenseParticipant {
+  string user_id = 1;
+  int64 value = 2;
+}
+
+message CreateExpenseRequest {
+  string group_id = 1;
+  string description = 2;
+  int64 amount_cents = 3;
+  string currency = 4;       // empty — group currency
+  string paid_by = 5;        // empty — caller
+  SplitType split_type = 6;
+  repeated ExpenseParticipant participants = 7; // empty with EQUAL — all members
+  google.protobuf.Timestamp occurred_at = 8;
+}
+
+message GetReceiptRequest { string receipt_id = 1; }
+
+message ListReceiptsRequest {
+  string group_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListReceiptsResponse { repeated Receipt receipts = 1; }
+
+message ItemInput {
+  string name = 1;
+  int32 quantity = 2;
+  int64 price_cents = 3;
+}
+
+message UpdateItemsRequest {
+  string receipt_id = 1;
+  repeated ItemInput items = 2;
+  string store = 3;
+  int64 tax_cents = 4;
+  int64 tip_cents = 5;
+  string currency = 6;
+}
+
+message ClaimInput {
+  string item_id = 1;
+  int32 shares = 2; // 0 — unclaim
+}
+
+message ClaimItemsRequest {
+  string receipt_id = 1;
+  repeated ClaimInput claims = 2;
+}
+
+message GetSplitRequest { string receipt_id = 1; }
+message FinalizeReceiptRequest { string receipt_id = 1; }
+message DeleteReceiptRequest { string receipt_id = 1; }
+message DeleteReceiptResponse {}
+
+message MemberShare {
+  string user_id = 1;
+  int64 items_cents = 2;
+  int64 tax_cents = 3;
+  int64 tip_cents = 4;
+  int64 total_cents = 5;             // receipt currency
+  int64 total_group_cents = 6;       // converted to group currency
+  string name = 7;
+}
+
+message Split {
+  string receipt_id = 1;
+  string payer_id = 2;
+  repeated MemberShare shares = 3;
+  int64 unclaimed_cents = 4;
+  repeated string unclaimed_item_ids = 5;
+  string currency = 6;
+  string group_currency = 7;
+  double fx_rate = 8; // receipt currency -> group currency (1 if same)
+}
+
+message GetBalancesRequest { string group_id = 1; }
+
+message Transfer {
+  string from_user_id = 1;
+  string to_user_id = 2;
+  int64 amount_cents = 3;
+  string from_name = 4;
+  string to_name = 5;
+  PaymentHandles to_payment = 6; // for "pay with Venmo/PayPal/Zelle" buttons
+}
+
+message MemberBalance {
+  string user_id = 1;
+  int64 net_cents = 2; // >0 — is owed, <0 — owes
+  string name = 3;
+}
+
+message GetBalancesResponse {
+  string currency = 1;
+  repeated MemberBalance balances = 2;
+  repeated Transfer suggested_transfers = 3;
+}
+
+// Records a payment made outside the app. The caller must be one of the two
+// sides: the debtor ("I paid") or the creditor ("I received").
+message SettleUpRequest {
+  string group_id = 1;
+  string to_user_id = 2;
+  int64 amount_cents = 3;  // group currency
+  string from_user_id = 4; // empty — caller
+}
+
+message Settlement {
+  string id = 1;
+  string group_id = 2;
+  string from_user_id = 3;
+  string to_user_id = 4;
+  int64 amount_cents = 5;
+  string currency = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message GetMyBalancesRequest {}
+
+message FriendBalance {
+  string user_id = 1;
+  int64 net_cents = 2; // home currency; >0 — friend owes you
+  string name = 3;
+  PaymentHandles payment = 4;
+}
+
+message GetMyBalancesResponse {
+  string currency = 1;
+  int64 owed_to_me_cents = 2;
+  int64 i_owe_cents = 3;
+  repeated FriendBalance friends = 4;
+}
+
+message GetFriendLedgerRequest { string user_id = 1; }
+
+enum LedgerEntryKind {
+  LEDGER_ENTRY_KIND_UNSPECIFIED = 0;
+  LEDGER_ENTRY_KIND_RECEIPT = 1;    // itemized receipt
+  LEDGER_ENTRY_KIND_EXPENSE = 2;    // single-amount expense
+  LEDGER_ENTRY_KIND_SETTLEMENT = 3; // payment between the two of you
+}
+
+// One event between you and the friend, from YOUR side:
+// amount_cents > 0 — they owe you more, < 0 — you owe them more (group currency).
+message LedgerEntry {
+  LedgerEntryKind kind = 1;
+  string receipt_id = 2; // empty for settlements
+  string title = 3;      // store / expense description / "Payment"
+  int64 amount_cents = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
+
+message LedgerGroup {
+  string group_id = 1;
+  string group_name = 2;
+  string currency = 3;       // group currency
+  int64 net_cents = 4;       // group currency; >0 — friend owes you
+  int64 net_home_cents = 5;  // converted to your home currency
+  repeated LedgerEntry entries = 6; // newest first
+}
+
+message FriendLedger {
+  string user_id = 1;
+  string name = 2;
+  PaymentHandles payment = 3;
+  string currency = 4;      // your home currency
+  int64 net_cents = 5;      // total across groups, home currency; >0 — friend owes you
+  repeated LedgerGroup groups = 6; // only groups with history between you two
+}
+
+message SettleWithFriendRequest { string user_id = 1; }
+
+message SettleWithFriendResponse {
+  repeated Settlement settlements = 1; // one per group that had a non-zero balance
+  int64 net_paid_cents = 2;            // home currency; >0 — friend paid you, <0 — you paid
+  string currency = 3;
+}

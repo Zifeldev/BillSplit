@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+// Service-to-service APIs. Never exposed by the gateway.
+package billsplit.internalapi.v1;
+
+option go_package = "github.com/Zifeldev/Billsplit/pkg/pb/billsplit/internalapi/v1;internalv1";
+
+// auth service
+service UserDirectory {
+  rpc GetUsers(GetUsersRequest) returns (GetUsersResponse);
+  rpc GetUserByEmail(GetUserByEmailRequest) returns (UserInfo);
+}
+
+message UserInfo {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  string currency = 4;
+  string venmo = 5;
+  string paypal = 6;
+  string zelle = 7;
+}
+
+message GetUsersRequest { repeated string ids = 1; }
+message GetUsersResponse { repeated UserInfo users = 1; }
+message GetUserByEmailRequest { string email = 1; }
+
+// social service
+service GroupDirectory {
+  rpc GetGroup(GetGroupRequest) returns (GroupInfo);
+}
+
+message GetGroupRequest { string group_id = 1; }
+
+message GroupInfo {
+  string id = 1;
+  string name = 2;
+  string owner_id = 3;
+  string currency = 4;
+  repeated string member_ids = 5;
+}
+
+// split service
+service SplitInternal {
+  rpc GetReceiptImage(GetReceiptImageRequest) returns (ReceiptImage);
+  // Net balance of a user inside a group (social checks it before removing a member).
+  rpc GetMemberBalance(GetMemberBalanceRequest) returns (MemberBalance);
+  // Has the group any finalized receipts (group currency can't change then).
+  rpc GroupHasActivity(GroupHasActivityRequest) returns (GroupHasActivityResponse);
+  // Owed/owe totals in the given currency (finance dashboard).
+  rpc GetUserTotals(GetUserTotalsRequest) returns (UserTotals);
+}
+
+message GetReceiptImageRequest { string receipt_id = 1; }
+
+message ReceiptImage {
+  string receipt_id = 1;
+  bytes image = 2;
+  string content_type = 3;
+  string raw_text = 4;
+  string status = 5;
+}
+
+message GetMemberBalanceRequest {
+  string group_id = 1;
+  string user_id = 2;
+}
+
+message MemberBalance { int64 net_cents = 1; }
+
+message GroupHasActivityRequest { string group_id = 1; }
+message GroupHasActivityResponse { bool has_activity = 1; }
+
+message GetUserTotalsRequest {
+  string user_id = 1;
+  string currency = 2;
+}
+
+message UserTotals {
+  int64 owed_to_me_cents = 1;
+  int64 i_owe_cents = 2;
+}

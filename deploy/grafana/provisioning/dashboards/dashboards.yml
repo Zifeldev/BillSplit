@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: billsplit
+    folder: Billsplit
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

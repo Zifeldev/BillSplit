@@ -1,0 +1,162 @@
+syntax = "proto3";
+
+package billsplit.v1;
+
+option go_package = "github.com/Zifeldev/Billsplit/pkg/pb/billsplit/v1;billsplitv1";
+
+import "google/protobuf/timestamp.proto";
+import "billsplit/v1/auth.proto";
+
+// Served by the social service: friends, groups, invite links.
+
+service FriendService {
+  rpc ListFriends(ListFriendsRequest) returns (ListFriendsResponse);
+  rpc ListFriendRequests(ListFriendRequestsRequest) returns (ListFriendRequestsResponse);
+  // Send a request to a registered user by email.
+  rpc SendFriendRequest(SendFriendRequestRequest) returns (Friend);
+  rpc RespondFriendRequest(RespondFriendRequestRequest) returns (Friend);
+  rpc RemoveFriend(RemoveFriendRequest) returns (RemoveFriendResponse);
+  // Personal link: whoever opens it becomes your friend immediately.
+  rpc CreateFriendInvite(CreateFriendInviteRequest) returns (InviteLink);
+  rpc AcceptFriendInvite(AcceptFriendInviteRequest) returns (Friend);
+}
+
+service GroupService {
+  rpc CreateGroup(CreateGroupRequest) returns (Group);
+  rpc GetGroup(GetGroupRequest) returns (Group);
+  rpc ListMyGroups(ListMyGroupsRequest) returns (ListMyGroupsResponse);
+  rpc UpdateGroup(UpdateGroupRequest) returns (Group);
+  // Only friends can be added directly; others join through an invite link.
+  rpc AddMember(AddMemberRequest) returns (Group);
+  rpc RemoveMember(RemoveMemberRequest) returns (Group);
+  rpc CreateGroupInvite(CreateGroupInviteRequest) returns (InviteLink);
+  rpc ListGroupInvites(ListGroupInvitesRequest) returns (ListGroupInvitesResponse);
+  rpc RevokeGroupInvite(RevokeGroupInviteRequest) returns (RevokeGroupInviteResponse);
+  // Preview before joining: group name, members count, who invited.
+  // Public (works without login); already_member is false for anonymous callers.
+  rpc GetInvite(GetInviteRequest) returns (InvitePreview);
+  rpc JoinGroup(JoinGroupRequest) returns (Group);
+}
+
+enum FriendStatus {
+  FRIEND_STATUS_UNSPECIFIED = 0;
+  FRIEND_STATUS_PENDING_INCOMING = 1;
+  FRIEND_STATUS_PENDING_OUTGOING = 2;
+  FRIEND_STATUS_ACCEPTED = 3;
+}
+
+message Friend {
+  string user_id = 1;
+  string name = 2;
+  string email = 3;
+  FriendStatus status = 4;
+  google.protobuf.Timestamp since = 5;
+  PaymentHandles payment = 6; // only for accepted friends
+}
+
+message ListFriendsRequest {}
+message ListFriendsResponse { repeated Friend friends = 1; }
+
+message ListFriendRequestsRequest {}
+message ListFriendRequestsResponse {
+  repeated Friend incoming = 1;
+  repeated Friend outgoing = 2;
+}
+
+message SendFriendRequestRequest { string email = 1; }
+
+message RespondFriendRequestRequest {
+  string user_id = 1;
+  bool accept = 2;
+}
+
+message RemoveFriendRequest { string user_id = 1; }
+message RemoveFriendResponse {}
+
+enum InviteKind {
+  INVITE_KIND_UNSPECIFIED = 0;
+  INVITE_KIND_FRIEND = 1;
+  INVITE_KIND_GROUP = 2;
+}
+
+message InviteLink {
+  string token = 1;
+  string url = 2;        // https://<web>/invite/<token>
+  string app_url = 3;    // billsplit://invite/<token>
+  InviteKind kind = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  int32 max_uses = 6;    // 0 — unlimited
+  int32 uses = 7;
+}
+
+message CreateFriendInviteRequest {}
+message AcceptFriendInviteRequest { string token = 1; }
+
+message GroupMember {
+  string user_id = 1;
+  string name = 2;
+  string email = 3;
+  string role = 4; // owner | member
+  PaymentHandles payment = 5;
+}
+
+message Group {
+  string id = 1;
+  string name = 2;
+  string owner_id = 3;
+  string currency = 4; // balances are kept in this currency
+  repeated GroupMember members = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message CreateGroupRequest {
+  string name = 1;
+  string currency = 2;
+  repeated string friend_ids = 3; // add friends right away
+}
+
+message GetGroupRequest { string group_id = 1; }
+message ListMyGroupsRequest {}
+message ListMyGroupsResponse { repeated Group groups = 1; }
+
+message UpdateGroupRequest {
+  string group_id = 1;
+  string name = 2;
+  string currency = 3; // allowed only while the group has no finalized receipts
+}
+
+message AddMemberRequest {
+  string group_id = 1;
+  string user_id = 2; // must be your friend
+}
+
+message RemoveMemberRequest {
+  string group_id = 1;
+  string user_id = 2;
+}
+
+message CreateGroupInviteRequest {
+  string group_id = 1;
+  int32 ttl_hours = 2; // default 72, max 720
+  int32 max_uses = 3;  // 0 — unlimited
+}
+
+message ListGroupInvitesRequest { string group_id = 1; }
+message ListGroupInvitesResponse { repeated InviteLink invites = 1; } // active (not expired/revoked) only
+
+message RevokeGroupInviteRequest { string token = 1; }
+message RevokeGroupInviteResponse {}
+
+message GetInviteRequest { string token = 1; }
+
+message InvitePreview {
+  InviteKind kind = 1;
+  string inviter_name = 2;
+  string group_id = 3;
+  string group_name = 4;
+  int32 members_count = 5;
+  bool expired = 6;
+  bool already_member = 7;
+}
+
+message JoinGroupRequest { string token = 1; }

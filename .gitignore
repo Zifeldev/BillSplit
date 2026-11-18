@@ -1,0 +1,43 @@
+# Secrets and local configuration — never commit. Generate with `make secrets`.
+secrets/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+
+# Real financial data used for manual testing stays on the machine.
+# Synthetic fixtures live under internal/**/testdata and are committed.
+private/
+samples/
+statements/
+receipts/
+*.ofx
+backups/
+*.dump
+*.sql.gz
+
+# Build output
+bin/
+dist/
+*.out
+coverage/
+
+# Dependencies and tool caches
+node_modules/
+.expo/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+*.log
+*.tgz

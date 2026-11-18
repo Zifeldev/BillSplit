@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Must match the versions in the headers of pkg/pb/**/*.pb.go,
+  # otherwise `make proto` produces a diff.
+  PROTOC_VERSION: "36.2"
+  PROTOC_GEN_GO_VERSION: v1.36.12
+  PROTOC_GEN_GO_GRPC_VERSION: v1.6.2
+  PROTOC_GEN_GRPC_GATEWAY_VERSION: v2.33.0
+
+jobs:
+  go:
+    name: Go (vet, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test -race ./...
+      - name: Integration tests (testcontainers, uses the runner's Docker)
+        run: go test -tags integration ./...
+      - name: Build every command
+        run: |
+          for d in cmd/*/; do
+            echo "building $d"
+            CGO_ENABLED=0 go build -o /dev/null "./$d" || exit 1
+          done
+
+  proto:
+    name: Generated protobuf code is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install protoc
+        run: |
+          curl -fsSL -o /tmp/protoc.zip \
+            "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+          sudo unzip -o /tmp/protoc.zip -d /usr/local bin/protoc 'include/*'
+          protoc --version
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@${PROTOC_GEN_GO_GRPC_VERSION}
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@${PROTOC_GEN_GRPC_GATEWAY_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: make proto
+        run: make proto
+      - name: Check pkg/pb is committed
+        run: |
+          git status --porcelain pkg/pb
+          git diff --exit-code pkg/pb
+          test -z "$(git status --porcelain pkg/pb)" || { echo "untracked generated files in pkg/pb — run make proto and commit"; exit 1; }
+
+  web:
+    name: Web / mobile (typecheck, lint, web export)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npx eslint src
+      - name: Expo web export
+        run: npx expo export --platform web
+
+  docker:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build Go services image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: billsplit-go:ci
+          cache-from: type=gha,scope=go
+          cache-to: type=gha,mode=max,scope=go
+      - name: Build OCR image
+        uses: docker/build-push-action@v6
+        with:
+          context: services/ocr
+          push: false
+          tags: billsplit-ocr:ci
+          cache-from: type=gha,scope=ocr
+          cache-to: type=gha,mode=max,scope=ocr

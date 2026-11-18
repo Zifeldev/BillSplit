@@ -1,0 +1,56 @@
+You can check the authenticity of the certificate
+by scanning the QR code or follow the link:
+https://bankffin.kz/en/check-receipt
+JSC "Freedom Bank Kazakhstan"
+BIC TESTKZKA
+www.bankffin.kz
+Super Card statement
+for the period from 01.01.2026 to 31.01.2026
+JOHN DOE
+Card number: **0000
+Account currency: USD, KZT, EUR
+Date: 31.01.2026
+Account number Currency Balance
+KZ00TEST0000000000USD USD 10.00 $
+KZ00TEST0000000000KZT KZT 0.00 ₸
+Summary of card transactions:
+Payment -3,500.00₸
+Transfer -52,050.00₸
+Pending amount 6,250.00₸
+Others 0.00₸
+
+You can check the authenticity of the certificate
+by scanning the QR code or follow the link:
+https://bankffin.kz/en/check-receipt
+Based on the Bank’s exchange rate at the time this statement 
+was issued.
+Date The amount Currency Operation Details
+30.01.2026 -12.50 $ USD Pending 
+amount
+COFFEE HOUSE 12 SEATTLE 
+US
+29.01.2026 -12.50 $ USD Acquiring COFFEE HOUSE 12 SEATTLE US
+28.01.2026 +100.00 $ USD Replenishment Между своими счетами по курсу 
+500.5
+28.01.2026 -50,050.00 ₸ KZT Transfer Между своими счетами
+27.01.2026 +25,000.00 ₸ KZT Replenishment
+Пополнение. ФИО: Иван И.. 
+Референс: ABC123. Перевод по 
+мобильному номеру.
+27.01.2026 -3,500.00 ₸ KZT Payment
+ТОО "Magnum Cash&Carry" За оплату
+/товар заказ 42
+26.01.2026 -8.00 € EUR Acquiring CAFE CENTRAL WIEN AT
+26.01.2026 -15.00 $ USD Acquiring MOVIE PLACE 77 PORTLAND US
+Иван И. . 
+Pending amount. We’re waiting for confirmation from the payment network
+
+You can check the authenticity of the certificate
+by scanning the QR code or follow the link:
+https://bankffin.kz/en/check-receipt
+Date The amount Currency Operation Details
+25.01.2026 -2,000.00 ₸ KZT Transfer Безвозмездный перевод
+25.01.2026 -15.00 $ USD Acquiring MOVIE PLACE 77 PORTLAND US
+24.01.2026 -1,200.00 ₸ KZT Acquiring YANDEX GO ALMATY KZ
+24.01.2026 -3.00 $ USD Acquiring BUS TICKET SEATTLE US
+24.01.2026 -3.00 $ USD Acquiring BUS TICKET SEATTLE US
